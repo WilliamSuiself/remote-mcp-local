@@ -57,9 +57,16 @@ app.get("/authorize", async (c) => {
 // This endpoint is responsible for validating any login information and
 // then completing the authorization request with the OAUTH_PROVIDER
 app.post("/approve", async (c) => {
-	const { action, oauthReqInfo, email, password } = await parseApproveFormBody(
-		await c.req.parseBody(),
-	);
+	// 修复：直接将解析后的表单数据传递给 parseApproveFormBody 函数
+	const formData = await c.req.raw.formData();
+	const formObject: { [key: string]: string | File } = {};
+	
+	// 将 FormData 转换为普通对象
+	for (const [key, value] of formData.entries()) {
+		formObject[key] = value;
+	}
+	
+	const { action, oauthReqInfo, email, password } = await parseApproveFormBody(formObject);
 
 	if (!oauthReqInfo) {
 		return c.html("INVALID LOGIN", 401);
