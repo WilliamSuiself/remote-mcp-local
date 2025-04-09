@@ -57,58 +57,73 @@ app.get("/authorize", async (c) => {
 // This endpoint is responsible for validating any login information and
 // then completing the authorization request with the OAUTH_PROVIDER
 app.post("/approve", async (c) => {
-	// 修复：直接将解析后的表单数据传递给 parseApproveFormBody 函数
-	const formData = await c.req.raw.formData();
-	const formObject: { [key: string]: string | File } = {};
-	
-	// 将 FormData 转换为普通对象
-	for (const [key, value] of formData.entries()) {
-		formObject[key] = value;
-	}
-	
-	const { action, oauthReqInfo, email, password } = await parseApproveFormBody(formObject);
-
-	if (!oauthReqInfo) {
-		return c.html("INVALID LOGIN", 401);
-	}
-
-	// If the user needs to both login and approve, we should validate the login first
-	if (action === "login_approve") {
-		// We'll allow any values for email and password for this demo
-		// but you could validate them here
-		// Ex:
-		// if (email !== "user@example.com" || password !== "password") {
-		// biome-ignore lint/correctness/noConstantCondition: This is a demo
-		if (false) {
+	try {
+		// 使用 Hono 的 c.req.raw 获取原始请求
+		const request = c.req.raw;
+		const contentType = request.headers.get("content-type") || "";
+		
+		// 检查内容类型是否为表单数据
+		if (contentType.includes("application/x-www-form-urlencoded")) {
+			const formData = await request.formData();
+			const formObject: { [key: string]: string | File } = {};
+			
+			// 将 FormData 转换为普通对象
+			for (const [key, value] of formData.entries()) {
+				formObject[key] = value;
+			}
+			
+			const { action, oauthReqInfo, email, password } = await parseApproveFormBody(formObject);
+			
+			if (!oauthReqInfo) {
+				return c.html("INVALID LOGIN", 401);
+			}
+			
+			// If the user needs to both login and approve, we should validate the login first
+			if (action === "login_approve") {
+				// We'll allow any values for email and password for this demo
+				// but you could validate them here
+				// Ex:
+				// if (email !== "user@example.com" || password !== "password") {
+				// biome-ignore lint/correctness/noConstantCondition: This is a demo
+				if (false) {
+					return c.html(
+						layout(
+							await renderAuthorizationRejectedContent("/"),
+							"MCP Remote Auth Demo - Authorization Status",
+						),
+					);
+				}
+			}
+			
+			// The user must be successfully logged in and have approved the scopes, so we
+			// can complete the authorization request
+			const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
+				request: oauthReqInfo,
+				userId: email || "anonymous@example.com",
+				metadata: {
+					label: "Test User",
+				},
+				scope: oauthReqInfo.scope,
+				props: {
+					userEmail: email || "anonymous@example.com",
+				},
+			});
+			
 			return c.html(
 				layout(
-					await renderAuthorizationRejectedContent("/"),
+					await renderAuthorizationApprovedContent(redirectTo),
 					"MCP Remote Auth Demo - Authorization Status",
 				),
 			);
+		} else {
+			// 如果不是表单数据，返回错误
+			return c.html("INVALID CONTENT TYPE", 400);
 		}
+	} catch (error: any) {
+		// 添加错误处理，修复类型错误
+		console.error("Error in /approve route:", error);
+		return c.html(`Error: ${error.message || "Unknown error"}`, 500);
 	}
-
-	// The user must be successfully logged in and have approved the scopes, so we
-	// can complete the authorization request
-	const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
-		request: oauthReqInfo,
-		userId: email,
-		metadata: {
-			label: "Test User",
-		},
-		scope: oauthReqInfo.scope,
-		props: {
-			userEmail: email,
-		},
-	});
-
-	return c.html(
-		layout(
-			await renderAuthorizationApprovedContent(redirectTo),
-			"MCP Remote Auth Demo - Authorization Status",
-		),
-	);
 });
 
 export default app;
