@@ -7,29 +7,6 @@
 	"name": "remote-mcp-local",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-09",
-	"migrations": [
-		{
-			"new_sqlite_classes": ["MyMCP"],
-			"tag": "v1"
-		}
-	],
-	"durable_objects": {
-		"bindings": [
-			{
-				"class_name": "MyMCP",
-				"name": "MCP_OBJECT"
-			}
-		]
-	},
-	"kv_namespaces": [
-		{
-			"binding": "OAUTH_KV",
-			"id": "YOUR_KV_NAMESPACE_ID"
-		}
-	],
-	"observability": {
-		"enabled": true
-	},
 	"assets": { "directory": "./static/", "binding": "ASSETS" },
 	"vars": {
 		"NEWS_API_KEY": "f7e695542752406dbaef28b3c481be53",
