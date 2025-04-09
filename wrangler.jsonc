@@ -24,7 +24,8 @@
 	"kv_namespaces": [
 		{
 			"binding": "OAUTH_KV",
-			"id": "需要替换为您的KV命名空间ID"
+			"id": "8128f425965040dbbe8f3710df67e85e",
+			"preview_id": "8128f425965040dbbe8f3710df67e85e"
 		}
 	],
 	"observability": {
