@@ -1,190 +1,389 @@
+// Helper to generate the layout
+import { html, raw } from "hono/html";
+import type { HtmlEscapedString } from "hono/utils/html";
 import { marked } from "marked";
+import type { AuthRequest } from "@cloudflare/workers-oauth-provider";
+import { env } from "cloudflare:workers";
 
-// 基本布局函数
-export function layout(content: string, title: string): string {
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      line-height: 1.6;
-      color: #333;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 20px;
-    }
-    h1, h2, h3 { color: #2c3e50; }
-    a { color: #3498db; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .btn {
-      display: inline-block;
-      padding: 10px 15px;
-      background: #3498db;
-      color: white;
-      border-radius: 4px;
-      border: none;
-      cursor: pointer;
-      font-size: 16px;
-      margin: 5px 0;
-    }
-    .btn:hover { background: #2980b9; }
-    .container { margin-top: 30px; }
-    .scope-item {
-      border: 1px solid #ddd;
-      padding: 10px;
-      margin-bottom: 10px;
-      border-radius: 4px;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    ${content}
-  </div>
-</body>
-</html>
-  `;
-}
+// This file mainly exists as a dumping ground for uninteresting html and CSS
+// to remove clutter and noise from the auth logic. You likely do not need
+// anything from this file.
 
-// 主页内容
-export async function homeContent(request: Request): Promise<string> {
-  const url = new URL(request.url);
-  return `
-    <h1>MCP 远程服务器</h1>
-    <p>这是一个集成了聚合数据新闻和时区API的MCP服务。</p>
-    <h2>可用工具</h2>
-    <ul>
-      <li><strong>getNews</strong> - 获取各类新闻</li>
-      <li><strong>getTimezone</strong> - 获取全球各地时区信息</li>
-    </ul>
-    <p><a href="${url.origin}/authorize" class="btn">授权访问</a></p>
-  `;
-}
+export const layout = (content: HtmlEscapedString | string, title: string) => html`
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8" />
+			<meta
+				name="viewport"
+				content="width=device-width, initial-scale=1.0"
+			/>
+			<title>${title}</title>
+			<script src="https://cdn.tailwindcss.com"></script>
+			<script>
+				tailwind.config = {
+					theme: {
+						extend: {
+							colors: {
+								primary: "#3498db",
+								secondary: "#2ecc71",
+								accent: "#f39c12",
+							},
+							fontFamily: {
+								sans: ["Inter", "system-ui", "sans-serif"],
+								heading: ["Roboto", "system-ui", "sans-serif"],
+							},
+						},
+					},
+				};
+			</script>
+			<style>
+				@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap");
 
-// 解析表单数据
-export async function parseApproveFormBody(formData: FormData): Promise<{
-  action: string;
-  oauthReqInfo: any;
-  email: string;
-  password: string;
-}> {
-  const action = formData.get("action") as string || "";
-  const oauthReqInfoStr = formData.get("oauth_req_info") as string || "{}";
-  const email = formData.get("email") as string || "";
-  const password = formData.get("password") as string || "";
+				/* Custom styling for markdown content */
+				.markdown h1 {
+					font-size: 2.25rem;
+					font-weight: 700;
+					font-family: "Roboto", system-ui, sans-serif;
+					color: #1a202c;
+					margin-bottom: 1rem;
+					line-height: 1.2;
+				}
 
-  let oauthReqInfo = null;
-  try {
-    oauthReqInfo = JSON.parse(oauthReqInfoStr);
-  } catch (e) {
-    console.error("Failed to parse oauth_req_info", e);
-  }
+				.markdown h2 {
+					font-size: 1.5rem;
+					font-weight: 600;
+					font-family: "Roboto", system-ui, sans-serif;
+					color: #2d3748;
+					margin-top: 1.5rem;
+					margin-bottom: 0.75rem;
+					line-height: 1.3;
+				}
 
-  return { action, oauthReqInfo, email, password };
-}
+				.markdown h3 {
+					font-size: 1.25rem;
+					font-weight: 600;
+					font-family: "Roboto", system-ui, sans-serif;
+					color: #2d3748;
+					margin-top: 1.25rem;
+					margin-bottom: 0.5rem;
+				}
 
-// 渲染已登录的授权页面
-export async function renderLoggedInAuthorizeScreen(
-  scopes: Array<{ name: string; description: string }>,
-  oauthReqInfo: any
-): Promise<string> {
-  const scopesList = scopes
-    .map(
-      (scope) => `
-    <div class="scope-item">
-      <strong>${scope.name}</strong>
-      <p>${scope.description}</p>
-    </div>
-  `
-    )
-    .join("");
+				.markdown p {
+					font-size: 1.125rem;
+					color: #4a5568;
+					margin-bottom: 1rem;
+					line-height: 1.6;
+				}
 
-  return `
-    <h1>授权请求</h1>
-    <p>应用 <strong>${oauthReqInfo.client_name || "未知应用"}</strong> 请求访问您的账户。</p>
-    
-    <h2>请求的权限：</h2>
-    ${scopesList}
-    
-    <form method="POST" action="/approve">
-      <input type="hidden" name="action" value="approve" />
-      <input type="hidden" name="oauth_req_info" value='${JSON.stringify(oauthReqInfo)}' />
-      <button type="submit" class="btn">授权访问</button>
-    </form>
-  `;
-}
+				.markdown a {
+					color: #3498db;
+					font-weight: 500;
+					text-decoration: none;
+				}
 
-// 渲染未登录的授权页面
-export async function renderLoggedOutAuthorizeScreen(
-  scopes: Array<{ name: string; description: string }>,
-  oauthReqInfo: any
-): Promise<string> {
-  const scopesList = scopes
-    .map(
-      (scope) => `
-    <div class="scope-item">
-      <strong>${scope.name}</strong>
-      <p>${scope.description}</p>
-    </div>
-  `
-    )
-    .join("");
+				.markdown a:hover {
+					text-decoration: underline;
+				}
 
-  return `
-    <h1>登录并授权</h1>
-    <p>应用 <strong>${oauthReqInfo.client_name || "未知应用"}</strong> 请求访问您的账户。</p>
-    
-    <h2>请求的权限：</h2>
-    ${scopesList}
-    
-    <form method="POST" action="/approve">
-      <input type="hidden" name="action" value="login_approve" />
-      <input type="hidden" name="oauth_req_info" value='${JSON.stringify(oauthReqInfo)}' />
-      
-      <div>
-        <label for="email">电子邮件：</label>
-        <input type="email" id="email" name="email" required />
-      </div>
-      
-      <div>
-        <label for="password">密码：</label>
-        <input type="password" id="password" name="password" required />
-      </div>
-      
-      <button type="submit" class="btn">登录并授权</button>
-    </form>
-  `;
-}
+				.markdown blockquote {
+					border-left: 4px solid #f39c12;
+					padding-left: 1rem;
+					padding-top: 0.75rem;
+					padding-bottom: 0.75rem;
+					margin-top: 1.5rem;
+					margin-bottom: 1.5rem;
+					background-color: #fffbeb;
+					font-style: italic;
+				}
 
-// 渲染授权被拒绝的页面
-export async function renderAuthorizationRejectedContent(
-  homeUrl: string
-): Promise<string> {
-  return `
-    <h1>授权被拒绝</h1>
-    <p>您的登录信息无效或您拒绝了授权请求。</p>
-    <a href="${homeUrl}" class="btn">返回首页</a>
-  `;
-}
+				.markdown blockquote p {
+					margin-bottom: 0.25rem;
+				}
 
-// 渲染授权成功的页面
-export async function renderAuthorizationApprovedContent(
-  redirectUrl: string
-): Promise<string> {
-  return `
-    <h1>授权成功</h1>
-    <p>您已成功授权该应用访问您的账户。</p>
-    <p>正在重定向到应用...</p>
-    <a href="${redirectUrl}" class="btn">如果未自动重定向，请点击此处</a>
-    <script>
-      setTimeout(() => {
-        window.location.href = "${redirectUrl}";
-      }, 2000);
-    </script>
-  `;
-}
+				.markdown ul,
+				.markdown ol {
+					margin-top: 1rem;
+					margin-bottom: 1rem;
+					margin-left: 1.5rem;
+					font-size: 1.125rem;
+					color: #4a5568;
+				}
+
+				.markdown li {
+					margin-bottom: 0.5rem;
+				}
+
+				.markdown ul li {
+					list-style-type: disc;
+				}
+
+				.markdown ol li {
+					list-style-type: decimal;
+				}
+
+				.markdown pre {
+					background-color: #f7fafc;
+					padding: 1rem;
+					border-radius: 0.375rem;
+					margin-top: 1rem;
+					margin-bottom: 1rem;
+					overflow-x: auto;
+				}
+
+				.markdown code {
+					font-family: monospace;
+					font-size: 0.875rem;
+					background-color: #f7fafc;
+					padding: 0.125rem 0.25rem;
+					border-radius: 0.25rem;
+				}
+
+				.markdown pre code {
+					background-color: transparent;
+					padding: 0;
+				}
+			</style>
+		</head>
+		<body
+			class="bg-gray-50 text-gray-800 font-sans leading-relaxed flex flex-col min-h-screen"
+		>
+			<header class="bg-white shadow-sm mb-8">
+				<div
+					class="container mx-auto px-4 py-4 flex justify-between items-center"
+				>
+					<a
+						href="/"
+						class="text-xl font-heading font-bold text-primary hover:text-primary/80 transition-colors"
+						>MCP Remote Auth Demo</a
+					>
+				</div>
+			</header>
+			<main class="container mx-auto px-4 pb-12 flex-grow">
+				${content}
+			</main>
+			<footer class="bg-gray-100 py-6 mt-12">
+				<div class="container mx-auto px-4 text-center text-gray-600">
+					<p>
+						&copy; ${new Date().getFullYear()} MCP Remote Auth Demo.
+						All rights reserved.
+					</p>
+				</div>
+			</footer>
+		</body>
+	</html>
+`;
+
+export const homeContent = async (req: Request): Promise<HtmlEscapedString> => {
+	// We have the README symlinked into the static directory, so we can fetch it
+	// and render it into HTML
+	const origin = new URL(req.url).origin;
+	const res = await env.ASSETS.fetch(`${origin}/README.md`);
+	const markdown = await res.text();
+	const content = await marked(markdown);
+	return html`
+		<div class="max-w-4xl mx-auto markdown">${raw(content)}</div>
+	`;
+};
+
+export const renderLoggedInAuthorizeScreen = async (
+	oauthScopes: { name: string; description: string }[],
+	oauthReqInfo: AuthRequest,
+) => {
+	return html`
+		<div class="max-w-md mx-auto bg-white p-8 rounded-lg shadow-md">
+			<h1 class="text-2xl font-heading font-bold mb-6 text-gray-900">
+				Authorization Request
+			</h1>
+
+			<div class="mb-8">
+				<h2 class="text-lg font-semibold mb-3 text-gray-800">
+					MCP Remote Auth Demo would like permission to:
+				</h2>
+				<ul class="space-y-2">
+					${oauthScopes.map(
+						(scope) => html`
+							<li class="flex items-start">
+								<span
+									class="inline-block mr-2 mt-1 text-secondary"
+									>✓</span
+								>
+								<div>
+									<p class="font-medium">${scope.name}</p>
+									<p class="text-gray-600 text-sm">
+										${scope.description}
+									</p>
+								</div>
+							</li>
+						`,
+					)}
+				</ul>
+			</div>
+			<form action="/approve" method="POST" class="space-y-4">
+				<input
+					type="hidden"
+					name="oauthReqInfo"
+					value="${JSON.stringify(oauthReqInfo)}"
+				/>
+				<input type="hidden" name="email" value="user@example.com" />
+				<button
+					type="submit"
+					name="action"
+					value="approve"
+					class="w-full py-3 px-4 bg-secondary text-white rounded-md font-medium hover:bg-secondary/90 transition-colors"
+				>
+					Approve
+				</button>
+				<button
+					type="submit"
+					name="action"
+					value="reject"
+					class="w-full py-3 px-4 border border-gray-300 text-gray-700 rounded-md font-medium hover:bg-gray-50 transition-colors"
+				>
+					Reject
+				</button>
+			</form>
+		</div>
+	`;
+};
+
+export const renderLoggedOutAuthorizeScreen = async (
+	oauthScopes: { name: string; description: string }[],
+	oauthReqInfo: AuthRequest,
+) => {
+	return html`
+		<div class="max-w-md mx-auto bg-white p-8 rounded-lg shadow-md">
+			<h1 class="text-2xl font-heading font-bold mb-6 text-gray-900">
+				Login and Authorize
+			</h1>
+
+			<div class="mb-8">
+				<h2 class="text-lg font-semibold mb-3 text-gray-800">
+					MCP Remote Auth Demo would like permission to:
+				</h2>
+				<ul class="space-y-2">
+					${oauthScopes.map(
+						(scope) => html`
+							<li class="flex items-start">
+								<span
+									class="inline-block mr-2 mt-1 text-secondary"
+									>✓</span
+								>
+								<div>
+									<p class="font-medium">${scope.name}</p>
+									<p class="text-gray-600 text-sm">
+										${scope.description}
+									</p>
+								</div>
+							</li>
+						`,
+					)}
+				</ul>
+			</div>
+
+			<form action="/approve" method="POST" class="space-y-4">
+				<input
+					type="hidden"
+					name="oauthReqInfo"
+					value="${JSON.stringify(oauthReqInfo)}"
+				/>
+				<input type="hidden" name="action" value="login_approve" />
+
+				<div class="mb-4">
+					<label
+						for="email"
+						class="block text-gray-700 font-medium mb-2"
+						>Email</label
+					>
+					<input
+						type="email"
+						id="email"
+						name="email"
+						required
+						class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary focus:border-primary"
+					/>
+				</div>
+
+				<div class="mb-6">
+					<label
+						for="password"
+						class="block text-gray-700 font-medium mb-2"
+						>Password</label
+					>
+					<input
+						type="password"
+						id="password"
+						name="password"
+						required
+						class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary focus:border-primary"
+					/>
+					<p class="text-xs text-gray-500 mt-1">
+						This is a demo. Any password will work.
+					</p>
+				</div>
+
+				<button
+					type="submit"
+					class="w-full py-3 px-4 bg-secondary text-white rounded-md font-medium hover:bg-secondary/90 transition-colors"
+				>
+					Login & Authorize
+				</button>
+			</form>
+		</div>
+	`;
+};
+
+export const renderApproveContent = (
+	message: string,
+	status: string,
+	redirectUrl: string,
+) => {
+	return html`
+		<div class="max-w-md mx-auto bg-white p-8 rounded-lg shadow-md text-center">
+			<h1
+				class="text-2xl font-heading font-bold mb-6 ${status === "success"
+					? "text-secondary"
+					: "text-red-500"}"
+			>
+				${status === "success" ? "Success" : "Error"}
+			</h1>
+			<p class="text-gray-700 mb-6">${message}</p>
+			<a
+				href="${redirectUrl}"
+				class="inline-block py-2 px-4 bg-primary text-white rounded-md font-medium hover:bg-primary/90 transition-colors"
+				>Return to Home</a
+			>
+		</div>
+	`;
+};
+
+export const renderAuthorizationApprovedContent = async (redirectUrl: string) => {
+	return renderApproveContent("Authorization approved!", "success", redirectUrl);
+};
+
+export const renderAuthorizationRejectedContent = async (redirectUrl: string) => {
+	return renderApproveContent("Authorization rejected.", "error", redirectUrl);
+};
+
+export const parseApproveFormBody = async (formData: {
+	[x: string]: string | File;
+}) => {
+	// 直接从对象中获取值
+	const action = formData.action as string;
+	const email = formData.email as string;
+	const password = formData.password as string;
+	let oauthReqInfo: AuthRequest | null = null;
+	
+	try {
+		if (typeof formData.oauthReqInfo === 'string') {
+			oauthReqInfo = JSON.parse(formData.oauthReqInfo) as AuthRequest;
+		} else {
+			oauthReqInfo = null;
+		}
+	} catch (e) {
+		console.error("Error parsing oauthReqInfo:", e);
+		oauthReqInfo = null;
+	}
+
+	return { action, oauthReqInfo, email, password };
+};
